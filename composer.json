@@ -1,0 +1,12 @@
+{
+    "name": "loothgroup/lg-stripe-membership",
+    "description": "Stripe membership billing for The Looth Group",
+    "type": "wordpress-plugin",
+    "require": {
+        "php": ">=8.3",
+        "stripe/stripe-php": "^16.0"
+    },
+    "autoload": {
+        "classmap": ["includes/"]
+    }
+}
