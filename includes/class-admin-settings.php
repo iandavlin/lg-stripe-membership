@@ -129,12 +129,21 @@ class LGSM_Admin_Settings {
     public static function render_tier_map(): void {
         $rows = get_option( self::OPT_TIER_MAP, [] );
         if ( ! is_array( $rows ) || empty( $rows ) ) {
-            $rows = [ [ 'price_id' => '', 'role' => 'looth2', 'label' => '' ] ];
+            $rows = [ [ 'price_id' => '', 'role' => 'looth2', 'label' => '', 'interval' => 'yearly', 'price_display' => '', 'dev_price_id' => '' ] ];
         }
+        $intervals = [ 'monthly' => 'Monthly', 'yearly' => 'Yearly' ];
         ?>
         <table class="widefat" id="lgsm-tier-table">
             <thead>
-                <tr><th>Stripe Price ID</th><th>WP Role</th><th>Label (optional)</th><th></th></tr>
+                <tr>
+                    <th>Stripe Price ID</th>
+                    <th>WP Role</th>
+                    <th>Label</th>
+                    <th>Interval</th>
+                    <th>Display Price</th>
+                    <th>Dev Economy Price ID</th>
+                    <th></th>
+                </tr>
             </thead>
             <tbody>
             <?php foreach ( $rows as $i => $row ) : ?>
@@ -147,7 +156,16 @@ class LGSM_Admin_Settings {
                             <option value="looth3" <?php selected( $row['role'] ?? '', 'looth3' ); ?>>looth3 (premium)</option>
                         </select>
                     </td>
-                    <td><input type="text" name="<?php echo esc_attr( self::OPT_TIER_MAP ); ?>[<?php echo (int) $i; ?>][label]" value="<?php echo esc_attr( $row['label'] ?? '' ); ?>" class="regular-text" placeholder="e.g. Looth Lite Monthly"></td>
+                    <td><input type="text" name="<?php echo esc_attr( self::OPT_TIER_MAP ); ?>[<?php echo (int) $i; ?>][label]" value="<?php echo esc_attr( $row['label'] ?? '' ); ?>" class="regular-text" placeholder="e.g. Looth Lite"></td>
+                    <td>
+                        <select name="<?php echo esc_attr( self::OPT_TIER_MAP ); ?>[<?php echo (int) $i; ?>][interval]">
+                            <?php foreach ( $intervals as $val => $lbl ) : ?>
+                                <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $row['interval'] ?? 'yearly', $val ); ?>><?php echo esc_html( $lbl ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                    <td><input type="text" name="<?php echo esc_attr( self::OPT_TIER_MAP ); ?>[<?php echo (int) $i; ?>][price_display]" value="<?php echo esc_attr( $row['price_display'] ?? '' ); ?>" style="width:100px" placeholder="$10/mo"></td>
+                    <td><input type="text" name="<?php echo esc_attr( self::OPT_TIER_MAP ); ?>[<?php echo (int) $i; ?>][dev_price_id]" value="<?php echo esc_attr( $row['dev_price_id'] ?? '' ); ?>" class="regular-text" placeholder="price_xxx (optional)"></td>
                     <td><button type="button" class="button lgsm-remove-row">&times;</button></td>
                 </tr>
             <?php endforeach; ?>
@@ -161,7 +179,10 @@ class LGSM_Admin_Settings {
             var tr = document.createElement('tr');
             tr.innerHTML = '<td><input type="text" name="lgsm_tier_map['+idx+'][price_id]" class="regular-text" placeholder="price_xxx"></td>'
                 + '<td><select name="lgsm_tier_map['+idx+'][role]"><option value="looth1">looth1</option><option value="looth2" selected>looth2</option><option value="looth3">looth3</option></select></td>'
-                + '<td><input type="text" name="lgsm_tier_map['+idx+'][label]" class="regular-text"></td>'
+                + '<td><input type="text" name="lgsm_tier_map['+idx+'][label]" class="regular-text" placeholder="e.g. Looth Lite"></td>'
+                + '<td><select name="lgsm_tier_map['+idx+'][interval]"><option value="monthly">Monthly</option><option value="yearly" selected>Yearly</option></select></td>'
+                + '<td><input type="text" name="lgsm_tier_map['+idx+'][price_display]" style="width:100px" placeholder="$10/mo"></td>'
+                + '<td><input type="text" name="lgsm_tier_map['+idx+'][dev_price_id]" class="regular-text" placeholder="price_xxx (optional)"></td>'
                 + '<td><button type="button" class="button lgsm-remove-row">&times;</button></td>';
             tbody.appendChild(tr);
         });
@@ -188,11 +209,18 @@ class LGSM_Admin_Settings {
         }
         $clean = [];
         foreach ( $input as $row ) {
-            $price_id = sanitize_text_field( $row['price_id'] ?? '' );
-            $role     = sanitize_text_field( $row['role'] ?? '' );
-            $label    = sanitize_text_field( $row['label'] ?? '' );
+            $price_id      = sanitize_text_field( $row['price_id'] ?? '' );
+            $role          = sanitize_text_field( $row['role'] ?? '' );
+            $label         = sanitize_text_field( $row['label'] ?? '' );
+            $interval      = sanitize_text_field( $row['interval'] ?? 'yearly' );
+            $price_display = sanitize_text_field( $row['price_display'] ?? '' );
+            $dev_price_id  = sanitize_text_field( $row['dev_price_id'] ?? '' );
+
             if ( $price_id !== '' && in_array( $role, [ 'looth1', 'looth2', 'looth3' ], true ) ) {
-                $clean[] = compact( 'price_id', 'role', 'label' );
+                if ( ! in_array( $interval, [ 'monthly', 'yearly' ], true ) ) {
+                    $interval = 'yearly';
+                }
+                $clean[] = compact( 'price_id', 'role', 'label', 'interval', 'price_display', 'dev_price_id' );
             }
         }
         return $clean;
@@ -275,6 +303,10 @@ class LGSM_Admin_Settings {
             if ( ( $row['price_id'] ?? '' ) === $price_id ) {
                 return $row['role'] ?? null;
             }
+            // Also check developing economy price ID
+            if ( ( $row['dev_price_id'] ?? '' ) !== '' && ( $row['dev_price_id'] ?? '' ) === $price_id ) {
+                return $row['role'] ?? null;
+            }
         }
         return null;
     }
@@ -282,10 +314,67 @@ class LGSM_Admin_Settings {
     /**
      * Get all tier mappings.
      *
-     * @return array Array of { price_id, role, label }.
+     * @return array Array of { price_id, role, label, interval, price_display, dev_price_id }.
      */
     public static function get_tier_map(): array {
         return get_option( self::OPT_TIER_MAP, [] );
+    }
+
+    /**
+     * Get the developing economy Price ID for a given standard Price ID.
+     *
+     * @return string|null Dev price ID or null if none configured.
+     */
+    public static function get_dev_price_id( string $price_id ): ?string {
+        $map = get_option( self::OPT_TIER_MAP, [] );
+        foreach ( $map as $row ) {
+            if ( ( $row['price_id'] ?? '' ) === $price_id ) {
+                $dev = $row['dev_price_id'] ?? '';
+                return $dev !== '' ? $dev : null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get tier data grouped by role for the frontend join page.
+     *
+     * Returns safe data only — no secrets, no dev price IDs.
+     *
+     * @return array [ { role, label, prices: [ { price_id, interval, display } ] } ]
+     */
+    public static function get_tiers_for_frontend(): array {
+        $map    = get_option( self::OPT_TIER_MAP, [] );
+        $groups = [];
+
+        foreach ( $map as $row ) {
+            $role  = $row['role'] ?? '';
+            $label = $row['label'] ?? '';
+            if ( $role === '' || $role === 'looth1' ) {
+                continue; // Skip free tier — not selectable on join page
+            }
+
+            if ( ! isset( $groups[ $role ] ) ) {
+                $groups[ $role ] = [
+                    'role'   => $role,
+                    'label'  => $label,
+                    'prices' => [],
+                ];
+            }
+
+            $groups[ $role ]['prices'][] = [
+                'price_id' => $row['price_id'] ?? '',
+                'interval' => $row['interval'] ?? 'yearly',
+                'display'  => $row['price_display'] ?? '',
+            ];
+
+            // Use the first non-empty label for the group
+            if ( $groups[ $role ]['label'] === '' && $label !== '' ) {
+                $groups[ $role ]['label'] = $label;
+            }
+        }
+
+        return array_values( $groups );
     }
 
     /**
