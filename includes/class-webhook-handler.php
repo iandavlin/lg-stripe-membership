@@ -191,7 +191,7 @@ class LGSM_Webhook_Handler {
         // Canceling at period end — user keeps access until period ends
         if ( ! empty( $subscription->cancel_at_period_end ) ) {
             error_log( "LGSM: User {$user_id} subscription {$sub_id} set to cancel at period end." );
-            // TODO: Tag in FluentCRM for winback automation
+            self::fcrm_tag_user( $user_id, 'Stripe Canceling' );
             return "Subscription {$sub_id} will cancel at period end.";
         }
 
@@ -243,7 +243,6 @@ class LGSM_Webhook_Handler {
      * invoice.payment_failed
      *
      * Stripe handles retries + dunning. We just log it.
-     * TODO: FluentCRM tag for personal outreach.
      */
     private static function on_payment_failed( object $invoice ): string {
         $customer_id = $invoice->customer ?? '';
@@ -251,7 +250,9 @@ class LGSM_Webhook_Handler {
 
         error_log( "LGSM: Payment failed for customer {$customer_id} (user {$user_id})." );
 
-        // TODO: Tag in FluentCRM for admin outreach
+        if ( $user_id ) {
+            self::fcrm_tag_user( $user_id, 'Stripe Payment Failed' );
+        }
 
         return "invoice.payment_failed — logged for customer {$customer_id}.";
     }
@@ -290,5 +291,51 @@ class LGSM_Webhook_Handler {
         }
 
         return LGSM_Admin_Settings::get_role_for_price( $price_id );
+    }
+
+    /**
+     * Tag a user in FluentCRM. Creates the tag if it doesn't exist.
+     *
+     * @param int    $user_id  WordPress user ID.
+     * @param string $tag_name Tag title (e.g. "Stripe Canceling").
+     */
+    private static function fcrm_tag_user( int $user_id, string $tag_name ): void {
+        if ( ! class_exists( '\FluentCrm\App\Models\Tag' ) ||
+             ! class_exists( '\FluentCrm\App\Models\Subscriber' ) ) {
+            error_log( "LGSM: FluentCRM not available — cannot tag user {$user_id} with \"{$tag_name}\"." );
+            return;
+        }
+
+        // Find or create the tag
+        $tag = \FluentCrm\App\Models\Tag::where( 'title', $tag_name )->first();
+        if ( ! $tag ) {
+            $tag = \FluentCrm\App\Models\Tag::create( [
+                'title' => $tag_name,
+                'slug'  => sanitize_title( $tag_name ),
+            ] );
+        }
+
+        if ( ! $tag || ! $tag->id ) {
+            error_log( "LGSM: Failed to find/create FluentCRM tag \"{$tag_name}\"." );
+            return;
+        }
+
+        // Find the subscriber by user ID
+        $subscriber = \FluentCrm\App\Models\Subscriber::where( 'user_id', $user_id )->first();
+        if ( ! $subscriber ) {
+            // Try by email
+            $user = get_userdata( $user_id );
+            if ( $user ) {
+                $subscriber = \FluentCrm\App\Models\Subscriber::where( 'email', $user->user_email )->first();
+            }
+        }
+
+        if ( ! $subscriber ) {
+            error_log( "LGSM: No FluentCRM subscriber for user {$user_id} — cannot apply tag \"{$tag_name}\"." );
+            return;
+        }
+
+        $subscriber->attachTags( [ $tag->id ] );
+        error_log( "LGSM: Tagged user {$user_id} with \"{$tag_name}\" (tag #{$tag->id})." );
     }
 }
