@@ -196,7 +196,12 @@ class LGSM_User_Manager {
      * Downgrade a user to looth1 (cancelled/lapsed).
      */
     public static function downgrade( int $user_id ): bool {
-        return self::set_role( $user_id, 'looth1' );
+        $changed = self::set_role( $user_id, 'looth1' );
+        if ( $changed ) {
+            delete_user_meta( $user_id, 'payment_source' );
+            error_log( "LGSM: Cleared payment_source for user {$user_id} on downgrade." );
+        }
+        return $changed;
     }
 
     /**
